@@ -1,4 +1,9 @@
-#!/usr/sbin/dtrace -s
+#!/usr/sbin/dtrace -Cs
+
+/* 
+ * compliments of Brendan Gregg
+ * http://dtrace.org/blogs/brendan/2012/01/09/activity-of-the-zfs-arc/
+ */
 
 #pragma D option quiet
 
