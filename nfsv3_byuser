@@ -1,0 +1,80 @@
+#!/usr/bin/bash
+#
+# This script measures the read/write and total NFS operations
+# during the sample period, broken out by the top 10 user ids for
+# a 10-second sample.
+#
+PATH=/usr/sbin:/usr/bin
+DURATION=10   # sample duration (seconds) keep small, for REST
+TOP_COUNT=10  # report only the top-10 users
+
+dtrace -Cn '
+#pragma D option quiet
+#pragma D option dynvarsize=4m
+#pragma D option switchrate=10hz
+inline int TOP_COUNT = '$TOP_COUNT';
+
+nfsv3:nfssrv:rfs3_commit:op-commit-start,
+nfsv3:nfssrv:rfs3_pathconf:op-pathconf-start,
+nfsv3:nfssrv:rfs3_fsinfo:op-fsinfo-start,
+nfsv3:nfssrv:rfs3_fsstat:op-fsstat-start,
+nfsv3:nfssrv:rfs3_readdirplus:op-readdirplus-start,
+nfsv3:nfssrv:rfs3_readdir:op-readdir-start,
+nfsv3:nfssrv:rfs3_link:op-link-start,
+nfsv3:nfssrv:rfs3_rename:op-rename-start,
+nfsv3:nfssrv:rfs3_rmdir:op-rmdir-start,
+nfsv3:nfssrv:rfs3_remove:op-remove-start,
+nfsv3:nfssrv:rfs3_mknod:op-mknod-start,
+nfsv3:nfssrv:rfs3_symlink:op-symlink-start,
+nfsv3:nfssrv:rfs3_mkdir:op-mkdir-start,
+nfsv3:nfssrv:rfs3_create:op-create-start,
+nfsv3:nfssrv:rfs3_write:op-write-start,
+nfsv3:nfssrv:rfs3_read:op-read-start,
+nfsv3:nfssrv:rfs3_readlink:op-readlink-start,
+nfsv3:nfssrv:rfs3_access:op-access-start,
+nfsv3:nfssrv:rfs3_lookup:op-lookup-start,
+nfsv3:nfssrv:rfs3_setattr:op-setattr-start,
+nfsv3:nfssrv:rfs3_getattr:op-getattr-start
+{
+	@nfs_ops[args[1]->noi_cred->cr_uid] = count()
+}
+
+nfsv3:nfssrv:rfs3_write:op-write-start
+{
+	@write_ops[args[1]->noi_cred->cr_uid] = count()
+}
+
+nfsv3:nfssrv:rfs3_read:op-read-start
+{
+	@read_ops[args[1]->noi_cred->cr_uid] = count()
+}
+
+profile:::tick-'$DURATION'sec
+{
+	exit(0);
+}
+
+END
+{
+	trunc(@nfs_ops, TOP_COUNT);
+	trunc(@write_ops, TOP_COUNT);
+	trunc(@read_ops, TOP_COUNT);
+
+	printf("nodename: %s\n", `utsname.nodename);
+	printf("sample duration: %d seconds\n", '$DURATION');
+	printf("end time: %Y\n", walltimestamp);
+	printf("top number: %d\n", TOP_COUNT);
+
+	printf("\ntotal NFS operations\n");
+	printf("userid\tcount\n");
+	printa("%d\t%@d\n", @nfs_ops);
+
+	printf("\nwrite operations\n");
+	printf("userid\tcount\n");
+	printa("%d\t%@d\n", @write_ops);
+
+	printf("\nread operations\n");
+	printf("userid\tcount\n");
+	printa("%d\t%@d\n", @read_ops);
+}
+'
